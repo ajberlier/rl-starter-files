@@ -4,6 +4,7 @@ import datetime
 import torch_ac
 import tensorboardX
 import sys
+import wandb
 
 import utils
 from utils import device
@@ -11,7 +12,6 @@ from model import ACModel
 
 
 # Parse arguments
-
 parser = argparse.ArgumentParser()
 
 # General parameters
@@ -62,13 +62,35 @@ parser.add_argument("--recurrence", type=int, default=1,
 parser.add_argument("--text", action="store_true", default=False,
                     help="add a GRU to the model to handle text input")
 
+
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="rl-starter-files",
+        name=args.model,
+        
+        # track hyperparameters and run metadata
+        config={
+            "frames_per_process": args.frames_per_proc,
+            "discount": args.discount,
+            "learning_rate": args.lr,
+            "gae_lambda": args.gae_lambda,
+            "entropy_coef": args.entropy_coef,
+            "value_loss_coef": args.value_loss_coef,
+            "max_grad_norm": args.max_grad_norm,
+            "recurrence": args.recurrence,
+            "optim_eps": args.optim_eps,
+            "clip_eps": args.clip_eps,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+        }
+    )
 
     args.mem = args.recurrence > 1
 
     # Set run dir
-
     date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
     default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
@@ -76,33 +98,27 @@ if __name__ == "__main__":
     model_dir = utils.get_model_dir(model_name)
 
     # Load loggers and Tensorboard writer
-
     txt_logger = utils.get_txt_logger(model_dir)
     csv_file, csv_logger = utils.get_csv_logger(model_dir)
     tb_writer = tensorboardX.SummaryWriter(model_dir)
 
     # Log command and all script arguments
-
     txt_logger.info("{}\n".format(" ".join(sys.argv)))
     txt_logger.info("{}\n".format(args))
 
     # Set seed for all randomness sources
-
     utils.seed(args.seed)
 
     # Set device
-
     txt_logger.info(f"Device: {device}\n")
 
     # Load environments
-
     envs = []
     for i in range(args.procs):
         envs.append(utils.make_env(args.env, args.seed + 10000 * i))
     txt_logger.info("Environments loaded\n")
 
     # Load training status
-
     try:
         status = utils.get_status(model_dir)
     except OSError:
@@ -110,14 +126,12 @@ if __name__ == "__main__":
     txt_logger.info("Training status loaded\n")
 
     # Load observations preprocessor
-
     obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
     if "vocab" in status:
         preprocess_obss.vocab.load_vocab(status["vocab"])
     txt_logger.info("Observations preprocessor loaded")
 
     # Load model
-
     acmodel = ACModel(obs_space, envs[0].action_space, args.mem, args.text)
     if "model_state" in status:
         acmodel.load_state_dict(status["model_state"])
@@ -126,7 +140,6 @@ if __name__ == "__main__":
     txt_logger.info("{}\n".format(acmodel))
 
     # Load algo
-
     if args.algo == "a2c":
         algo = torch_ac.A2CAlgo(envs, acmodel, device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                                 args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
@@ -143,12 +156,12 @@ if __name__ == "__main__":
     txt_logger.info("Optimizer loaded\n")
 
     # Train model
-
     num_frames = status["num_frames"]
     update = status["update"]
     start_time = time.time()
 
     while num_frames < args.frames:
+        
         # Update model parameters
         update_start_time = time.time()
         exps, logs1 = algo.collect_experiences()
@@ -160,7 +173,6 @@ if __name__ == "__main__":
         update += 1
 
         # Print logs
-
         if update % args.log_interval == 0:
             fps = logs["num_frames"] / (update_end_time - update_start_time)
             duration = int(time.time() - start_time)
@@ -191,9 +203,9 @@ if __name__ == "__main__":
 
             for field, value in zip(header, data):
                 tb_writer.add_scalar(field, value, num_frames)
+                wandb.log({field: value})
 
         # Save status
-
         if args.save_interval > 0 and update % args.save_interval == 0:
             status = {"num_frames": num_frames, "update": update,
                       "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
@@ -201,3 +213,6 @@ if __name__ == "__main__":
                 status["vocab"] = preprocess_obss.vocab.vocab
             utils.save_status(status, model_dir)
             txt_logger.info("Status saved")
+
+    # close out wandb logging
+    wandb.finish()

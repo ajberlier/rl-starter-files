@@ -1,6 +1,8 @@
 import argparse
 import time
 import datetime
+import torch
+from torch_ac.utils.penv import ParallelEnv
 import torch_ac
 import tensorboardX
 import sys
@@ -31,6 +33,8 @@ parser.add_argument("--procs", type=int, default=16,
                     help="number of processes (default: 16)")
 parser.add_argument("--frames", type=int, default=10**7,
                     help="number of frames of training (default: 1e7)")
+parser.add_argument("--eval-episodes", type=int, default=100,
+                    help="number of episodes of evaluation (default: 100)")
 
 # Parameters for main algorithm
 parser.add_argument("--epochs", type=int, default=4,
@@ -202,6 +206,7 @@ if __name__ == "__main__":
             csv_file.flush()
 
             for field, value in zip(header, data):
+                field = field
                 tb_writer.add_scalar(field, value, num_frames)
                 wandb.log({field: value})
 
@@ -213,6 +218,69 @@ if __name__ == "__main__":
                 status["vocab"] = preprocess_obss.vocab.vocab
             utils.save_status(status, model_dir)
             txt_logger.info("Status saved")
+
+            # run one evaluation episode
+
+            eval_envs = []
+            for i in range(args.procs):
+                eval_env = utils.make_env(args.env, args.seed + 10000 * i)
+                eval_envs.append(eval_env)
+            eval_env = ParallelEnv(eval_envs)
+            print("Eval Environments loaded\n")
+
+            eval_agent = utils.Agent(eval_env.observation_space, eval_env.action_space, model_dir, num_envs=args.procs)
+            print("Eval Agent loaded\n")
+
+            # Initialize logs
+            eval_logs = {"eval_num_frames_per_episode": [], "eval_return_per_episode": []}
+
+            # Run agent
+            eval_start_time = time.time()
+
+            eval_obss = eval_env.reset()
+
+            eval_log_done_counter = 0
+            eval_log_episode_return = torch.zeros(args.procs, device=device)
+            eval_log_episode_num_frames = torch.zeros(args.procs, device=device)
+
+            while eval_log_done_counter < args.eval_episodes:
+                eval_actions = eval_agent.get_actions(eval_obss)
+                eval_obss, eval_rewards, eval_terminateds, eval_truncateds, _ = eval_env.step(eval_actions)
+                eval_dones = tuple(a | b for a, b in zip(eval_terminateds, eval_truncateds))
+                eval_agent.analyze_feedbacks(eval_rewards, eval_dones)
+
+                eval_log_episode_return += torch.tensor(eval_rewards, device=device, dtype=torch.float)
+                eval_log_episode_num_frames += torch.ones(args.procs, device=device)
+
+                for i, eval_done in enumerate(eval_dones):
+                    if eval_done:
+                        eval_log_done_counter += 1
+                        eval_logs["eval_return_per_episode"].append(eval_log_episode_return[i].item())
+                        eval_logs["eval_num_frames_per_episode"].append(eval_log_episode_num_frames[i].item())
+
+                mask = 1 - torch.tensor(eval_dones, device=device, dtype=torch.float)
+                eval_log_episode_return *= mask
+                eval_log_episode_num_frames *= mask
+
+            eval_end_time = time.time()
+
+            # log the results
+            eval_num_frames = sum(eval_logs["eval_num_frames_per_episode"])
+            eval_fps = eval_num_frames / (eval_end_time - eval_start_time)
+            eval_duration = int(eval_end_time - eval_start_time)
+            eval_return_per_episode = utils.synthesize(eval_logs["eval_return_per_episode"])
+            eval_num_frames_per_episode = utils.synthesize(eval_logs["eval_num_frames_per_episode"])
+
+            eval_header = ["eval_update", "eval_frames", "eval_FPS", "eval_duration"]
+            eval_data = [eval_log_done_counter, eval_fps, eval_fps, eval_duration]
+            eval_header += ["eval_return_" + key for key in eval_return_per_episode.keys()]
+            eval_data += eval_return_per_episode.values()
+            eval_header += ["eval_num_frames_" + key for key in eval_num_frames_per_episode.keys()]
+            eval_data += eval_num_frames_per_episode.values()
+
+            for eval_field, eval_value in zip(eval_header, eval_data):
+                tb_writer.add_scalar(eval_field, eval_value, eval_num_frames)
+                wandb.log({eval_field: eval_value})   
 
     # close out wandb logging
     wandb.finish()

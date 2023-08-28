@@ -4,7 +4,6 @@ import datetime
 import torch
 from torch_ac.utils.penv import ParallelEnv
 import torch_ac
-import tensorboardX
 import sys
 import wandb
 
@@ -70,6 +69,7 @@ parser.add_argument("--text", action="store_true", default=False,
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    # wandb.login(key="")
     wandb.init(
         # set the wandb project where this run will be logged
         project="rl-starter-files",
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     args.mem = args.recurrence > 1
 
     # Set run dir
-    date = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+    date = datetime.datetime.now().strftime("%y%m%dT%H%M%S")
     default_model_name = f"{args.env}_{args.algo}_seed{args.seed}_{date}"
 
     model_name = args.model or default_model_name
@@ -104,7 +104,6 @@ if __name__ == "__main__":
     # Load loggers and Tensorboard writer
     txt_logger = utils.get_txt_logger(model_dir)
     csv_file, csv_logger = utils.get_csv_logger(model_dir)
-    tb_writer = tensorboardX.SummaryWriter(model_dir)
 
     # Log command and all script arguments
     txt_logger.info("{}\n".format(" ".join(sys.argv)))
@@ -205,10 +204,11 @@ if __name__ == "__main__":
             csv_logger.writerow(data)
             csv_file.flush()
 
+            wandb_input_dict = dict()
             for field, value in zip(header, data):
-                field = field
-                tb_writer.add_scalar(field, value, num_frames)
-                wandb.log({field: value})
+                # https://docs.wandb.ai/guides/track/log/logging-faqs
+                wandb_input_dict[field] = value
+            wandb.log(wandb_input_dict)
 
         # Save status
         if args.save_interval > 0 and update % args.save_interval == 0:
@@ -278,9 +278,10 @@ if __name__ == "__main__":
             eval_header += ["eval_num_frames_" + key for key in eval_num_frames_per_episode.keys()]
             eval_data += eval_num_frames_per_episode.values()
 
+            wandb_input_dict = dict()
             for eval_field, eval_value in zip(eval_header, eval_data):
-                tb_writer.add_scalar(eval_field, eval_value, eval_num_frames)
-                wandb.log({eval_field: eval_value})   
+                wandb_input_dict[eval_field] = eval_value
+            wandb.log(wandb_input_dict)
 
     # close out wandb logging
     wandb.finish()

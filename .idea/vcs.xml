@@ -3,6 +3,5 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/src/torch-ac" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/torch-ac" vcs="Git" />
   </component>
 </project>

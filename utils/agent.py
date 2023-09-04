@@ -22,7 +22,8 @@ class Agent:
         if self.acmodel.recurrent:
             self.memories = torch.zeros(self.num_envs, self.acmodel.memory_size, device=device)
 
-        self.acmodel.load_state_dict(utils.get_model_state(model_dir))
+        model_state = utils.get_model_state(model_dir)
+        self.acmodel.load_state_dict(model_state)
         self.acmodel.to(device)
         self.acmodel.eval()
         if hasattr(self.preprocess_obss, "vocab"):

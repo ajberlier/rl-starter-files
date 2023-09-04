@@ -5,4 +5,5 @@
 wandb/
 storage/
 
-*.idea
+.idea
+

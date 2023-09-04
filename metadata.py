@@ -126,7 +126,7 @@ class TrainingStats():
         # fig = plt.figure(figsize=(8, 4), dpi=200)
         fig = plt.figure(figsize=(16, 8))
 
-        for cm in ['loss', 'accuracy', 'wall_time', 'loss_comp', 'return_mean', 'FPS', 'frames']:
+        for cm in ['loss', 'accuracy', 'wall_time', 'loss_comp', 'return_mean', 'FPS']:
             core_metrics = [a for a in col_list if a.endswith(cm)]
             [col_list.remove(m) for m in core_metrics]
             # plot the loss curves

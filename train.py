@@ -2,14 +2,12 @@ import copy
 import os
 import argparse
 import logging
-
-import metadata
-
 # this needs to be setup right after the first logging import to ensure everything works as expected
 logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s",
                         handlers=[logging.StreamHandler()])
 
+import psutil
 import numpy as np
 import time
 import json
@@ -22,6 +20,8 @@ import wandb
 
 import utils
 from model import ACModel
+import early_stopping
+import metadata
 
 
 def setup(args: argparse.Namespace):
@@ -92,14 +92,14 @@ def setup(args: argparse.Namespace):
     envs = []
     for i in range(args.procs):
         envs.append(utils.make_env(args.env, args.seed + 10000 * i))
-    logging.info("Environments loaded\n")
+    logging.info("Environments loaded")
 
     # Load training status
     try:
         status = utils.get_status(args.output_dirpath)
     except OSError:
         status = {"num_frames": 0, "update": 0}
-    logging.info("Training status loaded\n")
+    logging.info("Training status loaded")
 
     # Load model
     acmodel = ACModel(envs[0].observation_space, envs[0].action_space, args.mem, args.text)
@@ -110,7 +110,7 @@ def setup(args: argparse.Namespace):
     if "model_state" in status:
         acmodel.load_state_dict(status["model_state"])
     acmodel.to(utils.device)
-    logging.info("Model loaded\n")
+    logging.info("Model loaded")
     # logging.info("{}\n".format(acmodel))
 
     # Load algo
@@ -127,23 +127,19 @@ def setup(args: argparse.Namespace):
 
     if "optimizer_state" in status:
         algo.optimizer.load_state_dict(status["optimizer_state"])
-    logging.info("Optimizer loaded\n")
+    logging.info("Optimizer loaded")
 
     return status, envs, acmodel, algo
 
 
-def eval_model(args: argparse.Namespace, epoch: int, train_stats: metadata.TrainingStats):
+def eval_model(args: argparse.Namespace, acmodel, eval_env, epoch: int, train_stats: metadata.TrainingStats):
     # run one evaluation episode
 
-    eval_envs = []
-    for i in range(args.procs):
-        eval_env = utils.make_env(args.env, args.seed + 10000 * i)
-        eval_envs.append(eval_env)
-    eval_env = ParallelEnv(eval_envs)
-    logging.info("Eval Environments loaded")
-
-    eval_agent = utils.Agent(eval_env.observation_space, eval_env.action_space, args.output_dirpath, num_envs=args.procs, use_memory=args.mem, use_text=args.text)
-    logging.info("Eval Agent loaded")
+    acmodel.eval()
+    acmodel.to(utils.device)
+    # wrap model into agent
+    eval_agent = utils.Agent(acmodel, num_envs=args.procs)
+    # logging.info("Eval Agent loaded")
 
     # Initialize logs
     eval_logs = {"eval_num_frames_per_episode": [], "eval_return_per_episode": []}
@@ -204,9 +200,13 @@ def eval_model(args: argparse.Namespace, epoch: int, train_stats: metadata.Train
             train_stats.add(epoch, key, wandb_input_dict[key])
     # train_stats.add_dict(epoch, wandb_input_dict)
 
+    del eval_agent
+
 
 def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stats: metadata.TrainingStats):
     epoch_num_frames = 0
+
+    algo.acmodel.train()
 
     while epoch_num_frames < args.eval_interval:
         # Update model parameters
@@ -252,6 +252,12 @@ def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stat
                 .format(*data))
             wandb.log(wandb_input_dict)
 
+            # log loss and current GPU utilization
+            cpu_mem_percent_used = psutil.virtual_memory().percent
+            gpu_mem_percent_used, memory_total_info = utils.get_gpu_memory()
+            gpu_mem_percent_used = [np.round(100 * x, 1) for x in gpu_mem_percent_used]
+            logging.info('  cpu_mem: {:2.1f}%  gpu_mem: {}% of {}MiB'.format(cpu_mem_percent_used, gpu_mem_percent_used, memory_total_info))
+
         update += 1
 
     train_stats.close_accumulate(epoch, 'update', method='avg')
@@ -268,34 +274,57 @@ def main(args: argparse.Namespace):
     update = status["update"]
     start_time = time.time()
 
-    #args.frames = 10000  # TODO remove
     train_stats = metadata.TrainingStats()
     epoch = -1
 
-    while num_frames < args.frames:
+    plateau_scheduler = early_stopping.EarlyStoppingOnPlateau(mode='max',patience=args.patience, threshold=args.eps)
+
+    # pre-build the eval envs (so they can be reused)
+    eval_envs = []
+    for i in range(args.procs):
+        eval_env = utils.make_env(args.env, args.seed + 10000 * i)
+        eval_envs.append(eval_env)
+    eval_env = ParallelEnv(eval_envs)
+    logging.info("Eval Environments loaded")
+
+    #while num_frames < args.frames:
+    while not plateau_scheduler.is_done():
         epoch += 1
         # train for an epoch
         num_frames, update = train_epoch(args, algo, num_frames, update, epoch, train_stats)
 
-        # save the model
-        status = {"num_frames": num_frames, "update": update,
-                  "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
-        if hasattr(acmodel.preprocess_obss, "vocab"):
-            status["vocab"] = acmodel.preprocess_obss.vocab.vocab
-        utils.save_status(status, args.output_dirpath)
-        logging.info("Status saved")
-
         # run eval (save needs to happen first, as this loads the saved model)
-        # TODO figure out how to avoid the save/load cycle for eval
-        eval_model(args, epoch, train_stats)
+        eval_model(args, acmodel, eval_env, epoch, train_stats)
+
+        eval_reward = train_stats.get_epoch('eval_return_mean', epoch=epoch)
+        plateau_scheduler.step(eval_reward)
+
+        train_stats.add_global('num_epochs_trained', epoch)
+
+        if plateau_scheduler.is_equiv_to_best_epoch:
+            logging.info('Updating best model with epoch: {}'.format(epoch))
+
+            # save the model
+            # save the model
+            status = {"num_frames": num_frames, "update": update,
+                      "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
+            if hasattr(acmodel.preprocess_obss, "vocab"):
+                status["vocab"] = acmodel.preprocess_obss.vocab.vocab
+            utils.save_status(status, args.output_dirpath)
+            logging.info("Status saved")
+
+            # update the global metrics with the best epoch
+            train_stats.update_global(epoch)
 
         # generate all the plotting
         train_stats.plot_all_metrics(output_dirpath=args.output_dirpath)
         # write copy of current metadata metrics to disk
         train_stats.export(args.output_dirpath)
 
-
-
+    wall_time = time.time() - start_time
+    train_stats.add_global('wall_time', wall_time)
+    logging.info("Total WallTime: {}seconds".format(train_stats.get_global('wall_time')))
+    train_stats.export(args.output_dirpath)  # update metrics data on disk
 
     # close out wandb logging
     wandb.finish()
@@ -316,17 +345,17 @@ if __name__ == "__main__":
                         help="name of the model (default: {ENV}_{ALGO}_{TIME})")
     parser.add_argument("--seed", type=int, default=3208920712,
                         help="random seed (default: 3208920712)")
-    parser.add_argument("--log-interval", type=int, default=1,
-                        help="number of updates between two logs (default: 1)")
+    parser.add_argument("--log-interval", type=int, default=10,
+                        help="number of updates between two logs (default: 10)")
     # parser.add_argument("--save-interval", type=int, default=10,
     #                     help="number of updates between two saves (default: 10, 0 means no saving)")
     parser.add_argument("--procs", type=int, default=16,
                         help="number of processes (default: 16)")
-    parser.add_argument("--frames", type=int, default=10 ** 7,
-                        help="total number of frames of training (default: 1e7)")
+    # parser.add_argument("--frames", type=int, default=10 ** 7,
+    #                     help="total number of frames of training (default: 1e7)")
     parser.add_argument("--eval-episodes", type=int, default=100,
                         help="number of episodes of evaluation (default: 100)")
-    parser.add_argument("--eval-interval", type=int, default=10000,
+    parser.add_argument("--eval-interval", type=int, default=50000,
                         help="number of updates between two evaluations (i.e. how big is an epoch)")
 
     # Parameters for main algorithm
@@ -358,6 +387,9 @@ if __name__ == "__main__":
                         help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
     parser.add_argument("--text", action="store_true", default=False,
                         help="add a GRU to the model to handle text input")
+
+    parser.add_argument('--eps', default=1e-4, type=float, help='eps value for determining early stopping metric equivalence.')
+    parser.add_argument('--patience', default=20, type=int, help='number of epochs past optimal to explore before early stopping terminates training.')
 
 
     args = parser.parse_args()

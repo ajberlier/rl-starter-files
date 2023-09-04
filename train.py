@@ -101,29 +101,27 @@ def setup(args: argparse.Namespace):
         status = {"num_frames": 0, "update": 0}
     logging.info("Training status loaded\n")
 
-    # Load observations preprocessor
-    obs_space, preprocess_obss = utils.get_obss_preprocessor(envs[0].observation_space)
-    if "vocab" in status:
-        preprocess_obss.vocab.load_vocab(status["vocab"])
-    logging.info("Observations preprocessor loaded")
-
     # Load model
-    acmodel = ACModel(obs_space, envs[0].action_space, use_memory=args.mem, use_text=args.text)
+    acmodel = ACModel(envs[0].observation_space, envs[0].action_space, args.mem, args.text)
+    # preprocess_obss = acmodel.preprocess_obss
+    if "vocab" in status:
+        acmodel.preprocess_obss.vocab.load_vocab(status["vocab"])
+    logging.info("Observations preprocessor loaded")
     if "model_state" in status:
         acmodel.load_state_dict(status["model_state"])
     acmodel.to(utils.device)
     logging.info("Model loaded\n")
-    logging.info("{}\n".format(acmodel))
+    # logging.info("{}\n".format(acmodel))
 
     # Load algo
     if args.algo == "a2c":
         algo = torch_ac.A2CAlgo(envs, acmodel, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                                 args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                                args.optim_alpha, args.optim_eps, preprocess_obss)
+                                args.optim_alpha, args.optim_eps, acmodel.preprocess_obss)
     elif args.algo == "ppo":
         algo = torch_ac.PPOAlgo(envs, acmodel, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                                 args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                                args.optim_eps, args.clip_eps, args.epochs, args.batch_size, preprocess_obss)
+                                args.optim_eps, args.clip_eps, args.epochs, args.batch_size, acmodel.preprocess_obss)
     else:
         raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -131,7 +129,7 @@ def setup(args: argparse.Namespace):
         algo.optimizer.load_state_dict(status["optimizer_state"])
     logging.info("Optimizer loaded\n")
 
-    return status, envs, obs_space, preprocess_obss, acmodel, algo
+    return status, envs, acmodel, algo
 
 
 def eval_model(args: argparse.Namespace, epoch: int, train_stats: metadata.TrainingStats):
@@ -263,7 +261,7 @@ def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stat
 
 
 def main(args: argparse.Namespace):
-    status, envs, obs_space, preprocess_obss, acmodel, algo = setup(args)  # updates args in place
+    status, envs, acmodel, algo = setup(args)  # updates args in place
 
     # Train model
     num_frames = status["num_frames"]
@@ -282,8 +280,8 @@ def main(args: argparse.Namespace):
         # save the model
         status = {"num_frames": num_frames, "update": update,
                   "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
-        if hasattr(preprocess_obss, "vocab"):
-            status["vocab"] = preprocess_obss.vocab.vocab
+        if hasattr(acmodel.preprocess_obss, "vocab"):
+            status["vocab"] = acmodel.preprocess_obss.vocab.vocab
         utils.save_status(status, args.output_dirpath)
         logging.info("Status saved")
 

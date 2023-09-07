@@ -1,8 +1,13 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 import torch_ac
+import gymnasium
+import re
+
+import utils
 
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
@@ -16,8 +21,13 @@ def init_params(m):
 
 
 class ACModel(nn.Module, torch_ac.RecurrentACModel):
-    def __init__(self, obs_space, action_space, use_memory=False, use_text=False):
+    def __init__(self, env_obs_space, action_space, use_memory=False, use_text=False):
         super().__init__()
+
+        self.env_obs_space = env_obs_space
+        self.obs_space = None  # setup in setup_obss_preprocessor
+        self.preprocess_obss = None  # setup in setup_obss_preprocessor
+        self.setup_obss_preprocessor()
 
         # Decide which components are enabled
         self.use_text = use_text
@@ -33,8 +43,8 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             nn.Conv2d(32, 64, (2, 2)),
             nn.ReLU()
         )
-        n = obs_space["image"][0]
-        m = obs_space["image"][1]
+        n = self.obs_space["image"][0]
+        m = self.obs_space["image"][1]
         self.image_embedding_size = ((n-1)//2-2)*((m-1)//2-2)*64
 
         # Define memory
@@ -44,7 +54,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         # Define text embedding
         if self.use_text:
             self.word_embedding_size = 32
-            self.word_embedding = nn.Embedding(obs_space["text"], self.word_embedding_size)
+            self.word_embedding = nn.Embedding(self.obs_space["text"], self.word_embedding_size)
             self.text_embedding_size = 128
             self.text_rnn = nn.GRU(self.word_embedding_size, self.text_embedding_size, batch_first=True)
 
@@ -69,6 +79,60 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
 
         # Initialize parameters correctly
         self.apply(init_params)
+
+    @staticmethod
+    def preprocess_images(images, device=None):
+        # Bug of Pytorch: very slow if not first converted to numpy array
+        images = np.array(images)
+        return torch.tensor(images, device=device, dtype=torch.float)
+
+    @staticmethod
+    def preprocess_texts(texts, vocab, device=None):
+        var_indexed_texts = []
+        max_text_len = 0
+
+        for text in texts:
+            tokens = re.findall("([a-z]+)", text.lower())
+            var_indexed_text = np.array([vocab[token] for token in tokens])
+            var_indexed_texts.append(var_indexed_text)
+            max_text_len = max(len(var_indexed_text), max_text_len)
+
+        indexed_texts = np.zeros((len(texts), max_text_len))
+
+        for i, indexed_text in enumerate(var_indexed_texts):
+            indexed_texts[i, :len(indexed_text)] = indexed_text
+
+        return torch.tensor(indexed_texts, device=device, dtype=torch.long)
+
+    def setup_obss_preprocessor(self):
+        # Check if obs_space is an image space
+        if isinstance(self.env_obs_space, gymnasium.spaces.Box):
+            obs_space = {"image": self.env_obs_space.shape}
+
+            def preprocess_obss(obss, device=None):
+                return torch_ac.DictList({
+                    "image": self.preprocess_images(obss, device=device)
+                })
+
+        # Check if it is a MiniGrid observation space
+        elif isinstance(self.env_obs_space, gymnasium.spaces.Dict) and "image" in self.env_obs_space.spaces.keys():
+            obs_space = {"image": self.env_obs_space.spaces["image"].shape, "text": 100}
+
+            vocab = utils.format.Vocabulary(obs_space["text"])
+
+            def preprocess_obss(obss, device=None):
+                return torch_ac.DictList({
+                    "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
+                    "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device)
+                })
+
+            preprocess_obss.vocab = vocab
+
+        else:
+            raise ValueError("Unknown observation space: " + str(self.env_obs_space))
+
+        self.obs_space = obs_space
+        self.preprocess_obss = preprocess_obss
 
     @property
     def memory_size(self):

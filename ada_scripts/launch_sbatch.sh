@@ -4,12 +4,12 @@
 script='/home/aberlie1/rl-starter-files/train.py'
 colnames=("algo" "env" "model" "save_interval" "frames")
 experiments=(
-    "ppo Gotoobj Gotoobj"
-    "ppo Gotolocal Gotolocal"
-    "ppo Goto Goto"
-    "ppo Pickupdist Pickupdist"
-    "ppo Putnext Putnext"
-    "ppo Unlockpickup Unlockpickup"
+    "ppo BabyAI-GoToObjS6-v0 BabyAI-GoToObj_PPO"
+    "ppo BabyAI-GoToLocalS8N7-v0 BabyAI-GoToLocal_PPO"
+    "ppo BabyAI-GoToObjMazeS7-v0 BabyAI-GoTo_PPO"
+    "ppo BabyAI-PickupDist BabyAI-PickupDist_PPO"
+    "ppo BabyAI-PutNextS7N4Carrying-v0 BabyAI-PutNext_PPO"
+    "ppo BabyAI-UnlockPickup BabyAI-UnlockPickup_PPO"
 ) 
 storage=/home/aberlie1/ada_user/data/rl-starter-files/
 conda=/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh

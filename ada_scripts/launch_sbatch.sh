@@ -4,7 +4,12 @@
 script='/home/aberlie1/rl-starter-files/train.py'
 colnames=("algo" "env" "model" "save_interval" "frames")
 experiments=(
-    "ppo MiniGrid-DoorKey-5x5-v0 DoorKey"
+    "ppo Gotoobj Gotoobj"
+    "ppo Gotolocal Gotolocal"
+    "ppo Goto Goto"
+    "ppo Pickupdist Pickupdist"
+    "ppo Putnext Putnext"
+    "ppo Unlockpickup Unlockpickup"
 ) 
 storage=/home/aberlie1/ada_user/data/rl-starter-files/
 conda=/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh

@@ -31,5 +31,5 @@ do
     frames=${row_array[${column_indices["frames"]}]}
 
     # submit slurm job
-    sbatch sbatch_script.sh ${algo} ${env} ${model} ${save_interval} ${frames} ${source} ${storage}
+    sbatch --mem=5000 --cpus-per-task=1 --gres=gpu:1 --time=24:00 sbatch_script.sh ${algo} ${env} ${model} ${save_interval} ${frames} ${source} ${storage} 
 done

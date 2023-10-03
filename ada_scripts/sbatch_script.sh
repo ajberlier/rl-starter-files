@@ -4,11 +4,9 @@
 ALGO=$1
 ENV=$2
 MODEL=$3
-SAVE_INTERVAL=$4
-FRAMES=$5
-CONDA=$6
-RL_STORAGE=$7
-SCRIPT=$8
+CONDA=$4
+RL_STORAGE=$5
+SCRIPT=$6
 
 # source conda environment
 source $CONDA
@@ -19,10 +17,9 @@ export RL_STORAGE=$RL_STORAGE
 echo "RL_STORAGE=$RL_STORAGE"
 
 # print the input values
-echo "Script: $SCRIPT, Conda: $CONDA, RL Storage: $RL_STORAGE, Algo: $ALGO, Env: $ENV, Model: $MODEL, Save Interval: $SAVE_INTERVAL, Frames: $FRAMES"
+echo "Script: $SCRIPT, Conda: $CONDA, RL Storage: $RL_STORAGE, Algo: $ALGO, Env: $ENV, Model: $MODEL"
 
 # run the training script
-python3 $SCRIPT --algo $ALGO --env $ENV --model $MODEL --save-interval $SAVE_INTERVAL --frames $FRAMES
-
+python3 $SCRIPT --algo $ALGO --env $ENV --model $MODEL
 # wait for all of the runs to complete before exiting
 wait

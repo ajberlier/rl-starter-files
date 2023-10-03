@@ -6,8 +6,8 @@ colnames=("algo" "env" "model" "save_interval" "frames")
 experiments=(
     "ppo MiniGrid-DoorKey-5x5-v0 DoorKey 100 100000000"
 ) 
-storage='/home/aberlie1/ada_user/data/rl-starter-files/'
-source='/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh'
+storage=/home/aberlie1/ada_user/data/rl-starter-files/
+conda=/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh
 
 # initialize an associative array
 declare -A column_indices
@@ -32,5 +32,5 @@ do
     frames=${row_array[${column_indices["frames"]}]}
 
     # submit slurm job
-    sbatch --mem=5000 --cpus-per-task=1 --gres=gpu:1 --time=24:00 sbatch_script.sh ${algo} ${env} ${model} ${save_interval} ${frames} ${source} ${storage} ${script}
+    sbatch --mem=5000 --cpus-per-task=1 --gres=gpu:1 --time=24:00 sbatch_script.sh ${algo} ${env} ${model} ${save_interval} ${frames} ${conda} ${storage} ${script}
 done

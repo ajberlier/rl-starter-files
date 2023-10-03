@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # define the experiments
-script='../train.py'
+script='/home/aberlie1/rl-starter-files/train.py'
 colnames=("algo" "env" "model" "save_interval" "frames")
 experiments=(
     "ppo MiniGrid-DoorKey-5x5-v0 DoorKey 100 100000000"

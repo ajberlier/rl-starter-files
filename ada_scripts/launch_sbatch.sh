@@ -3,7 +3,7 @@
 # define the experiments
 colnames=("algo" "env" "model" "save_interval" "frames")
 experiments=(
-    "ppo CartPole-v1 mlp 10 10000"
+    "ppo MiniGrid-DoorKey-5x5-v0 DoorKey 100 100000000"
 ) 
 storage='/home/aberlie1/ada_user/data/rl-starter-files/'
 source='/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh'

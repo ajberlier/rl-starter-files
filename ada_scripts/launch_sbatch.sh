@@ -69,5 +69,5 @@ do
     model=${row_array[${column_indices["model"]}]}
 
     # submit slurm job
-    sbatch --mem=5000 --cpus-per-task=1 --gres=gpu:1 --time=24:00 sbatch_script.sh ${algo} ${env} ${model} ${conda} ${storage} ${script}
+    sbatch --mem=5000 --cpus-per-task=1 --gres=gpu:1 --time=72:00:00 sbatch_script.sh ${algo} ${env} ${model} ${conda} ${storage} ${script}
 done

@@ -13,8 +13,7 @@ import time
 import json
 import datetime
 import torch
-from torch_ac.utils.penv import ParallelEnv
-import torch_ac
+
 import sys
 import wandb
 
@@ -22,6 +21,11 @@ import utils
 from model import ACModel
 import early_stopping
 import metadata
+
+import torch_ac
+from torch_ac.utils.penv import ParallelEnv
+from torch_ac.torch_ac.algos.oc import OCModel
+from torch_ac.torch_ac.algos.ppoc import PPOCAlgo
 
 
 def setup(args: argparse.Namespace):
@@ -102,25 +106,39 @@ def setup(args: argparse.Namespace):
     logging.info("Training status loaded")
 
     # Load model
-    acmodel = ACModel(envs[0].observation_space, envs[0].action_space, args.mem, args.text)
+    if args.arch == 'ac':
+        arch = ACModel(envs[0].observation_space, envs[0].action_space, args.mem, args.text)
+    elif args.arch == 'oc':
+        arch = OCModel(envs[0].observation_space, envs[0].action_space, args.num_options, args.mem, args.text)
+    else:
+        raise ValueError("Incorrect architecture name: {}".format(args.arch))
+    
     if "vocab" in status:
-        acmodel.preprocess_obss.vocab.load_vocab(status["vocab"])
+        arch.preprocess_obss.vocab.load_vocab(status["vocab"])
     logging.info("Observations preprocessor loaded")
     if "model_state" in status:
-        acmodel.load_state_dict(status["model_state"])
-    acmodel.to(utils.device)
+        arch.load_state_dict(status["model_state"])
+
+    arch.to(utils.device)
     logging.info("Model loaded")
     # logging.info("{}\n".format(acmodel))
 
     # Load algo
     if args.algo == "a2c":
-        algo = torch_ac.A2CAlgo(envs, acmodel, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+        algo = torch_ac.A2CAlgo(envs, arch, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                                 args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                                args.optim_alpha, args.optim_eps, acmodel.preprocess_obss)
+                                args.optim_alpha, args.optim_eps, arch.preprocess_obss)
     elif args.algo == "ppo":
-        algo = torch_ac.PPOAlgo(envs, acmodel, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
-                                args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
-                                args.optim_eps, args.clip_eps, args.epochs, args.batch_size, acmodel.preprocess_obss)
+        if args.arch == 'ac':
+            algo = torch_ac.PPOAlgo(envs, arch, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+                                    args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
+                                    args.optim_eps, args.clip_eps, args.epochs, args.batch_size, arch.preprocess_obss)
+        elif args.arch == 'oc':
+            algo = torch_ac.PPOCAlgo(envs, arch, args.num_options, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+                                    args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
+                                    args.optim_eps, args.clip_eps, args.epochs, args.batch_size, arch.preprocess_obss)
+        else:
+            raise ValueError("Incorrect architecture name: {}".format(args.arch))
     else:
         raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -128,16 +146,16 @@ def setup(args: argparse.Namespace):
         algo.optimizer.load_state_dict(status["optimizer_state"])
     logging.info("Optimizer loaded")
 
-    return status, envs, acmodel, algo
+    return status, envs, arch, algo
 
 
-def eval_model(args: argparse.Namespace, acmodel, eval_env, epoch: int, train_stats: metadata.TrainingStats):
+def eval_model(args: argparse.Namespace, arch, eval_env, epoch: int, train_stats: metadata.TrainingStats):
     # run one evaluation episode
 
-    acmodel.eval()
-    acmodel.to(utils.device)
+    arch.eval()
+    arch.to(utils.device)
     # wrap model into agent
-    eval_agent = utils.Agent(acmodel, num_envs=args.procs)
+    eval_agent = utils.Agent(arch, num_envs=args.procs)
     # logging.info("Eval Agent loaded")
 
     # Initialize logs
@@ -205,7 +223,7 @@ def eval_model(args: argparse.Namespace, acmodel, eval_env, epoch: int, train_st
 def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stats: metadata.TrainingStats):
     epoch_num_frames = 0
 
-    algo.acmodel.train()
+    algo.arch.train()
 
     while epoch_num_frames < args.eval_interval:
         # Update model parameters
@@ -266,7 +284,7 @@ def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stat
 
 
 def main(args: argparse.Namespace):
-    status, envs, acmodel, algo = setup(args)  # updates args in place
+    status, envs, arch, algo = setup(args)  # updates args in place
 
     # Train model
     num_frames = status["num_frames"]
@@ -293,7 +311,7 @@ def main(args: argparse.Namespace):
         num_frames, update = train_epoch(args, algo, num_frames, update, epoch, train_stats)
 
         # run eval (save needs to happen first, as this loads the saved model)
-        eval_model(args, acmodel, eval_env, epoch, train_stats)
+        eval_model(args, arch, eval_env, epoch, train_stats)
 
         eval_reward = train_stats.get_epoch('eval_return_mean', epoch=epoch)
         plateau_scheduler.step(eval_reward)
@@ -305,9 +323,9 @@ def main(args: argparse.Namespace):
 
             # save the model
             status = {"num_frames": num_frames, "update": update,
-                      "model_state": acmodel.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
-            if hasattr(acmodel.preprocess_obss, "vocab"):
-                status["vocab"] = acmodel.preprocess_obss.vocab.vocab
+                      "model_state": arch.state_dict(), "optimizer_state": algo.optimizer.state_dict()}
+            if hasattr(arch.preprocess_obss, "vocab"):
+                status["vocab"] = arch.preprocess_obss.vocab.vocab
             utils.save_status(status, args.output_dirpath)
             logging.info("Status saved")
 
@@ -333,6 +351,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # General parameters
+    parser.add_argument("--arch", required=True,
+                        help="mode architecture to use: ac | oc (REQUIRED)")
     parser.add_argument("--algo", required=True,
                         help="algorithm to use: a2c | ppo (REQUIRED)")
     parser.add_argument("--env", required=True,
@@ -379,6 +399,8 @@ if __name__ == "__main__":
                         help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
     parser.add_argument("--text", action="store_true", default=False,
                         help="add a GRU to the model to handle text input")
+    parser.add_argument("--num-options", default=1,
+                        help="number of options in the options framework")
 
     parser.add_argument('--eps', default=1e-4, type=float, help='eps value for determining early stopping metric equivalence.')
     parser.add_argument('--patience', default=20, type=int, help='number of epochs past optimal to explore before early stopping terminates training.')

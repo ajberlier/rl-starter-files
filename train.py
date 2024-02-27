@@ -23,9 +23,8 @@ import early_stopping
 import metadata
 
 import torch_ac
-from torch_ac.utils.penv import ParallelEnv
-from torch_ac.torch_ac.algos.oc import OCModel
-from torch_ac.torch_ac.algos.ppoc import PPOCAlgo
+import torch_ac.algos.oc
+import torch_ac.algos.ppoc
 
 
 def setup(args: argparse.Namespace):
@@ -109,7 +108,7 @@ def setup(args: argparse.Namespace):
     if args.arch == 'ac':
         arch = ACModel(envs[0].observation_space, envs[0].action_space, args.mem, args.text)
     elif args.arch == 'oc':
-        arch = OCModel(envs[0].observation_space, envs[0].action_space, args.num_options, args.mem, args.text)
+        arch = torch_ac.algos.oc.OCModel(envs[0].observation_space, envs[0].action_space, args.num_options, args.mem, args.text)
     else:
         raise ValueError("Incorrect architecture name: {}".format(args.arch))
     
@@ -134,7 +133,7 @@ def setup(args: argparse.Namespace):
                                     args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                                     args.optim_eps, args.clip_eps, args.epochs, args.batch_size, arch.preprocess_obss)
         elif args.arch == 'oc':
-            algo = torch_ac.PPOCAlgo(envs, arch, args.num_options, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
+            algo = torch_ac.algos.ppoc.PPOCAlgo(envs, arch, args.num_options, utils.device, args.frames_per_proc, args.discount, args.lr, args.gae_lambda,
                                     args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                                     args.optim_eps, args.clip_eps, args.epochs, args.batch_size, arch.preprocess_obss)
         else:
@@ -301,7 +300,7 @@ def main(args: argparse.Namespace):
     for i in range(args.procs):
         eval_env = utils.make_env(args.env, args.seed + 10000 * i)
         eval_envs.append(eval_env)
-    eval_env = ParallelEnv(eval_envs)
+    eval_env = torch_ac.utils.ParallelEnv(eval_envs)
     logging.info("Eval Environments loaded")
 
     #while num_frames < args.frames:
@@ -363,7 +362,7 @@ if __name__ == "__main__":
                         help="random seed (default: 3208920712)")
     parser.add_argument("--log-interval", type=int, default=10,
                         help="number of updates between two logs (default: 10)")
-    parser.add_argument("--procs", type=int, default=16,
+    parser.add_argument("--procs", type=int, default=8,
                         help="number of processes (default: 16)")
     parser.add_argument("--eval-episodes", type=int, default=100,
                         help="number of episodes of evaluation (default: 100)")
@@ -399,7 +398,7 @@ if __name__ == "__main__":
                         help="number of time-steps gradient is backpropagated (default: 1). If > 1, a LSTM is added to the model to have memory.")
     parser.add_argument("--text", action="store_true", default=False,
                         help="add a GRU to the model to handle text input")
-    parser.add_argument("--num-options", default=1,
+    parser.add_argument("--num-options", default=4,
                         help="number of options in the options framework")
 
     parser.add_argument('--eps', default=1e-4, type=float, help='eps value for determining early stopping metric equivalence.')

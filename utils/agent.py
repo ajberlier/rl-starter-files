@@ -1,7 +1,6 @@
 import torch
 
 import utils
-from model import ACModel
 
 
 class Agent:

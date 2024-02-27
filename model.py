@@ -3,11 +3,15 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
-import torch_ac
+
 import gymnasium
 import re
 
+import torch_ac
+
 import utils
+
+
 
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
@@ -62,6 +66,7 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
         self.embedding_size = self.semi_memory_size
         if self.use_text:
             self.embedding_size += self.text_embedding_size
+        self.embedding_size = int(self.embedding_size)
 
         # Define actor's model
         self.actor = nn.Sequential(
@@ -121,10 +126,17 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             vocab = utils.format.Vocabulary(obs_space["text"])
 
             def preprocess_obss(obss, device=None):
-                return torch_ac.DictList({
-                    "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
-                    "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device)
-                })
+                if 'option_dist' in obss[0].keys():
+                    return torch_ac.DictList({
+                        "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
+                        "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device),
+                        "option_dist": torch.tensor([obs["option_dist"] for obs in obss], device=device)
+                    })
+                else:
+                    return torch_ac.DictList({
+                        "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
+                        "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device)
+                    })
 
             preprocess_obss.vocab = vocab
 

@@ -167,6 +167,9 @@ cython_debug/
 ### Mac OS ###
 .DS_Store
 
+### SLURM ###
+.out
+
 ### Logging ###
 /storage
 /wandb

@@ -30,7 +30,7 @@ import torch_ac.algos.ppoc
 def setup(args: argparse.Namespace):
     # Set run dir
     date = datetime.datetime.now().strftime("%y%m%dT%H%M%S")
-    default_model_name = f"{args.env}_{args.algo}_{date}"
+    default_model_name = f"{args.env}_{args.algo}_{args.arch}_{date}"
 
     model_name = args.model or default_model_name
     model_name = model_name.replace(" ", "_")
@@ -81,7 +81,7 @@ def setup(args: argparse.Namespace):
     wandb.init(
         # set the wandb project where this run will be logged
         project="rl-starter-files",
-        name=args.model,
+        name=default_model_name,
         dir=model_dir,
         # mode='offline',
 
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument("--env", required=True,
                         help="name of the environment to train on (REQUIRED)")
     parser.add_argument("--model", default=None,
-                        help="name of the model (default: {ENV}_{ALGO}_{TIME})")
+                        help="name of the model (default: {ENV}_{ALGO}_{ARCH}_{TIME})")
     parser.add_argument("--seed", type=int, default=3208920712,
                         help="random seed (default: 3208920712)")
     parser.add_argument("--log-interval", type=int, default=10,

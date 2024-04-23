@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # set the input arguments
-ALGO=$1
-ENV=$2
-MODEL=$3
-CONDA=$4
-RL_STORAGE=$5
-SCRIPT=$6
+ARCH=$1
+ALGO=$2
+ENV=$3
+MODEL=$4
+CONDA=$5
+RL_STORAGE=$6
+SCRIPT=$7
 
 # source conda environment
 source $CONDA
@@ -17,9 +18,9 @@ export RL_STORAGE=$RL_STORAGE
 echo "RL_STORAGE=$RL_STORAGE"
 
 # print the input values
-echo "Script: $SCRIPT, Conda: $CONDA, RL Storage: $RL_STORAGE, Algo: $ALGO, Env: $ENV, Model: $MODEL"
+echo "Script: $SCRIPT, Conda: $CONDA, RL Storage: $RL_STORAGE, Arch: $ARCH, Algo: $ALGO, Env: $ENV, Model: $MODEL"
 
 # run the training script
-python3 $SCRIPT --algo $ALGO --env $ENV --model $MODEL
+python3 $SCRIPT --arch $ARCH --algo $ALGO --env $ENV --model $MODEL
 # wait for all of the runs to complete before exiting
 wait

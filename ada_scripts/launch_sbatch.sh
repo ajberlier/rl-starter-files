@@ -4,8 +4,8 @@
 script='/home/aberlie1/rl-starter-files/train.py'
 colnames=("arch" "algo" "env" "model")
 experiments=(
-    "ac ppo BabyAI-BlockedUnlockPickup-v0 BabyAI-BlockedUnlockPickup-v0_PPO"
-    "oc ppo BabyAI-BlockedUnlockPickup-v0 BabyAI-BlockedUnlockPickup-v0_PPOC"
+    "ac ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPO"
+    "oc ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPOC"
     ) 
 storage='/home/aberlie1/ada_user/data/rl-starter-files/'
 conda='/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh'
@@ -20,7 +20,7 @@ do
 done
 
 # loop through the eperiment data rows
-for row in "${xexperiments[@]}"
+for row in "${experiments[@]}"
 do
     # split the row into an array
     row_array=($row)

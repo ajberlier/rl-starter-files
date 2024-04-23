@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # define the experiments
-script='/home/aberlie1/rl-starter-files/train.py'
+script="/home/aberlie1/rl-starter-files/train.py"
 colnames=("arch" "algo" "env" "model")
 experiments=(
     "ac ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPO"
     "oc ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPOC"
     ) 
-storage='/home/aberlie1/ada_user/data/rl-starter-files/'
-conda='/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh'
+storage="/home/aberlie1/ada_user/data/rl-starter-files/"
+conda="/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh"
 
 # initialize an associative array
 declare -A column_indices
@@ -26,7 +26,7 @@ do
     row_array=($row)
 
     # access columns by header
-    arch=${row_arrau[${column_indices["arch"]}]}
+    arch=${row_array[${column_indices["arch"]}]}
     algo=${row_array[${column_indices["algo"]}]}
     env=${row_array[${column_indices["env"]}]}
     model=${row_array[${column_indices["model"]}]}

@@ -30,12 +30,22 @@ class Agent:
         with torch.no_grad():
             if self.arch.recurrent:
                 if self.arch.__class__.__name__ == 'OCModel':
-                    dist, _, option_dist, self.memories = self.arch(preprocessed_obss, self.memories)
+                    x = preprocessed_obss.image.transpose(1, 3).transpose(2, 3)
+                    x = self.arch.image_conv(x)
+                    x = x.reshape(x.shape[0], -1)
+                    option_dist = self.arch.options(x)
+                    option = option_dist.sample()
+                    dist, _, self.memories = self.arch(preprocessed_obss, option, self.memories)
                 elif self.arch.__class__.__name__ == 'ACModel':
                     dist, _, self.memories = self.arch(preprocessed_obss, self.memories)
             else:
                 if self.arch.__class__.__name__ == 'OCModel':
-                    dist, _, option_dist = self.arch(preprocessed_obss)
+                    x = preprocessed_obss.image.transpose(1, 3).transpose(2, 3)
+                    x = self.arch.image_conv(x)
+                    x = x.reshape(x.shape[0], -1)
+                    option_dist = self.arch.options(x)
+                    option = option_dist.sample()
+                    dist, _ = self.arch(preprocessed_obss, option)
                 elif self.arch.__class__.__name__ == 'ACModel':    
                     dist, _ = self.arch(preprocessed_obss)
 

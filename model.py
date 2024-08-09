@@ -23,8 +23,7 @@ def init_params(m):
         if m.bias is not None:
             m.bias.data.fill_(0)
 
-
-class ACModel(nn.Module, torch_ac.RecurrentACModel):
+class ACModel(nn.Module, torch_ac.ACModel):
     def __init__(self, env_obs_space, action_space, use_memory=False, use_text=False):
         super().__init__()
 
@@ -126,17 +125,17 @@ class ACModel(nn.Module, torch_ac.RecurrentACModel):
             vocab = utils.format.Vocabulary(obs_space["text"])
 
             def preprocess_obss(obss, device=None):
-                if 'option_dist' in obss[0].keys():
-                    return torch_ac.DictList({
-                        "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
-                        "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device),
-                        "option_dist": torch.tensor([obs["option_dist"] for obs in obss], device=device)
-                    })
-                else:
-                    return torch_ac.DictList({
-                        "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
-                        "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device)
-                    })
+                # if 'option_dist' in obss[0].keys():
+                #     return torch_ac.DictList({
+                #         "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
+                #         "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device),
+                #         "option_dist": torch.tensor([obs["option_dist"] for obs in obss], device=device)
+                #     })
+                # else:
+                return torch_ac.DictList({
+                    "image": self.preprocess_images([obs["image"] for obs in obss], device=device),
+                    "text": self.preprocess_texts([obs["mission"] for obs in obss], vocab, device=device)
+                })
 
             preprocess_obss.vocab = vocab
 

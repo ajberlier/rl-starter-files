@@ -118,7 +118,7 @@ def setup(args: argparse.Namespace):
     if "model_state" in status:
         arch.load_state_dict(status["model_state"])
 
-    arch.to(utils.device)
+    arch.to(utils.device);
     logging.info("Model loaded")
     # logging.info("{}\n".format(acmodel))
 
@@ -225,6 +225,7 @@ def train_epoch(args, algo, num_frames: int, update: int, epoch: int, train_stat
     algo.arch.train()
 
     while epoch_num_frames < args.eval_interval:
+
         # Update model parameters
         update_start_time = time.time()
         exps, logs1 = algo.collect_experiences()
@@ -354,6 +355,8 @@ if __name__ == "__main__":
                         help="mode architecture to use: ac | oc (REQUIRED)")
     parser.add_argument("--algo", required=True,
                         help="algorithm to use: a2c | ppo (REQUIRED)")
+    # parser.add_argument("--rewarder", required=True,
+    #                     help="reward mechanism to use: std | emma (REQUIRED)")
     parser.add_argument("--env", required=True,
                         help="name of the environment to train on (REQUIRED)")
     parser.add_argument("--model", default=None,
@@ -362,7 +365,7 @@ if __name__ == "__main__":
                         help="random seed (default: 3208920712)")
     parser.add_argument("--log-interval", type=int, default=10,
                         help="number of updates between two logs (default: 10)")
-    parser.add_argument("--procs", type=int, default=8,
+    parser.add_argument("--procs", type=int, default=1,
                         help="number of processes (default: 16)")
     parser.add_argument("--eval-episodes", type=int, default=100,
                         help="number of episodes of evaluation (default: 100)")
@@ -401,8 +404,8 @@ if __name__ == "__main__":
     parser.add_argument("--num-options", default=4,
                         help="number of options in the options framework")
 
-    parser.add_argument('--eps', default=1e-4, type=float, help='eps value for determining early stopping metric equivalence.')
-    parser.add_argument('--patience', default=20, type=int, help='number of epochs past optimal to explore before early stopping terminates training.')
+    parser.add_argument('--eps', default=1e-5, type=float, help='eps value for determining early stopping metric equivalence.')
+    parser.add_argument('--patience', default=100, type=int, help='number of epochs past optimal to explore before early stopping terminates training.')
 
 
     args = parser.parse_args()

@@ -6,6 +6,7 @@ colnames=("arch" "algo" "env" "model")
 experiments=(
     "ac ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPO"
     "oc ppo BabyAI-UnlockLocal-v0 BabyAI-UnlockLocal-v0_PPOC"
+    
     ) 
 storage="/home/aberlie1/ada_user/data/rl-starter-files/"
 conda="/home/aberlie1/ada_user/miniconda3/etc/profile.d/conda.sh"

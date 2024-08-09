@@ -1,8 +1,8 @@
 import torch
 
 import utils
-
-import torch_ac.algos.oc
+from .other import device
+from model import ACModel
 
 
 class Agent:
@@ -12,42 +12,30 @@ class Agent:
     - to choose an action given an observation,
     - to analyze the feedback (i.e. reward and done state) of its action."""
 
-    def __init__(self, arch, argmax=False, num_envs=1):
-
-        self.arch = arch
+    def __init__(self, obs_space, action_space, model_dir,
+                 argmax=False, num_envs=1, use_memory=False, use_text=False):
+        obs_space, self.preprocess_obss = utils.get_obss_preprocessor(obs_space)
+        self.acmodel = ACModel(obs_space, action_space, use_memory=use_memory, use_text=use_text)
         self.argmax = argmax
         self.num_envs = num_envs
 
-        if self.arch.recurrent:
-            self.memories = torch.zeros(self.num_envs, self.arch.memory_size, device=utils.device)
+        if self.acmodel.recurrent:
+            self.memories = torch.zeros(self.num_envs, self.acmodel.memory_size, device=device)
 
-        self.arch.to(utils.device)
-        self.arch.eval()
+        self.acmodel.load_state_dict(utils.get_model_state(model_dir))
+        self.acmodel.to(device)
+        self.acmodel.eval()
+        if hasattr(self.preprocess_obss, "vocab"):
+            self.preprocess_obss.vocab.load_vocab(utils.get_vocab(model_dir))
 
     def get_actions(self, obss):
-        preprocessed_obss = self.arch.preprocess_obss(obss, device=utils.device)
+        preprocessed_obss = self.preprocess_obss(obss, device=device)
 
         with torch.no_grad():
-            if self.arch.recurrent:
-                if self.arch.__class__.__name__ == 'OCModel':
-                    x = preprocessed_obss.image.transpose(1, 3).transpose(2, 3)
-                    x = self.arch.image_conv(x)
-                    x = x.reshape(x.shape[0], -1)
-                    option_dist = self.arch.options(x)
-                    option = option_dist.sample()
-                    dist, _, self.memories = self.arch(preprocessed_obss, option, self.memories)
-                elif self.arch.__class__.__name__ == 'ACModel':
-                    dist, _, self.memories = self.arch(preprocessed_obss, self.memories)
+            if self.acmodel.recurrent:
+                dist, _, self.memories = self.acmodel(preprocessed_obss, self.memories)
             else:
-                if self.arch.__class__.__name__ == 'OCModel':
-                    x = preprocessed_obss.image.transpose(1, 3).transpose(2, 3)
-                    x = self.arch.image_conv(x)
-                    x = x.reshape(x.shape[0], -1)
-                    option_dist = self.arch.options(x)
-                    option = option_dist.sample()
-                    dist, _ = self.arch(preprocessed_obss, option)
-                elif self.arch.__class__.__name__ == 'ACModel':    
-                    dist, _ = self.arch(preprocessed_obss)
+                dist, _ = self.acmodel(preprocessed_obss)
 
         if self.argmax:
             actions = dist.probs.max(1, keepdim=True)[1]
@@ -60,8 +48,8 @@ class Agent:
         return self.get_actions([obs])[0]
 
     def analyze_feedbacks(self, rewards, dones):
-        if self.arch.recurrent:
-            masks = 1 - torch.tensor(dones, dtype=torch.float, device=utils.device).unsqueeze(1)
+        if self.acmodel.recurrent:
+            masks = 1 - torch.tensor(dones, dtype=torch.float, device=device).unsqueeze(1)
             self.memories *= masks
 
     def analyze_feedback(self, reward, done):

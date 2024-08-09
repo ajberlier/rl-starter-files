@@ -2,11 +2,9 @@ import argparse
 import time
 import torch
 from torch_ac.utils.penv import ParallelEnv
-import wandb
 
 import utils
 from utils import device
-
 
 
 # Parse arguments
@@ -35,12 +33,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set seed for all randomness sources
+
     utils.seed(args.seed)
 
     # Set device
+
     print(f"Device: {device}\n")
 
     # Load environments
+
     envs = []
     for i in range(args.procs):
         env = utils.make_env(args.env, args.seed + 10000 * i)
@@ -49,6 +50,7 @@ if __name__ == "__main__":
     print("Environments loaded\n")
 
     # Load agent
+
     model_dir = utils.get_model_dir(args.model)
     agent = utils.Agent(env.observation_space, env.action_space, model_dir,
                         argmax=args.argmax, num_envs=args.procs,
@@ -56,9 +58,11 @@ if __name__ == "__main__":
     print("Agent loaded\n")
 
     # Initialize logs
+
     logs = {"num_frames_per_episode": [], "return_per_episode": []}
 
     # Run agent
+
     start_time = time.time()
 
     obss = env.reset()
@@ -85,11 +89,11 @@ if __name__ == "__main__":
         mask = 1 - torch.tensor(dones, device=device, dtype=torch.float)
         log_episode_return *= mask
         log_episode_num_frames *= mask
-        
 
     end_time = time.time()
 
     # Print logs
+
     num_frames = sum(logs["num_frames_per_episode"])
     fps = num_frames / (end_time - start_time)
     duration = int(end_time - start_time)
@@ -102,6 +106,7 @@ if __name__ == "__main__":
                   *num_frames_per_episode.values()))
 
     # Print worst episodes
+
     n = args.worst_episodes_to_show
     if n > 0:
         print("\n{} worst episodes:".format(n))
